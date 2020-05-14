@@ -1,12 +1,19 @@
 package myapp
 
 import (
+	"bytes"
+	"encoding/json"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
+	"io"
 	"io/ioutil"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -50,4 +57,73 @@ func TestBarPathHandler_WithName(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 	data, _ := ioutil.ReadAll(rec.Body)
 	assert.Equal(t, "Hello name", string(data))
+}
+func TestFooHandler_WithoutJson(t *testing.T) {
+
+	e := echo.New()
+
+	res := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/foo", nil)
+	c := e.NewContext(req, res)
+	fooHandler(c)
+
+	assert.Equal(t, http.StatusBadRequest, res.Code)
+}
+func TestFooHandler_WithJson(t *testing.T) {
+
+	e := echo.New()
+
+	res := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/foo",
+		strings.NewReader(`{"first_name":"hyecheon","last_name":"lee","email":"rainbow880616@gmail.com"}`))
+	c := e.NewContext(req, res)
+	fooHandler(c)
+
+	assert.Equal(t, http.StatusCreated, res.Code)
+
+	user := new(User)
+	err := json.NewDecoder(res.Body).Decode(user)
+	assert.Nil(t, err)
+	assert.Equal(t, "hyecheon", user.FirstName)
+	assert.Equal(t, "lee", user.LastName)
+
+}
+
+func TestUploadsHandler(t *testing.T) {
+
+	path := `C:\Users\hyecheon\Downloads\증명-.jpg`
+
+	file, _ := os.Open(path)
+	defer file.Close()
+
+	buf := &bytes.Buffer{}
+	writer := multipart.NewWriter(buf)
+	multi, err := writer.CreateFormFile("upload_file", filepath.Base(path))
+	assert.NoError(t, err)
+	io.Copy(multi, file)
+	writer.Close()
+
+	e := echo.New()
+	res := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/upload", buf)
+	req.Header.Set("Content-type", writer.FormDataContentType())
+	c := e.NewContext(req, res)
+	err = uploadsHandler(c)
+	assert.NoError(t, err)
+
+	uploadFilePath := "./uploads/" + filepath.Base(path)
+	_, err = os.Stat(uploadFilePath)
+	assert.NoError(t, err)
+
+	uploadFile, _ := os.Open(uploadFilePath)
+	originFile, _ := os.Open(path)
+	defer uploadFile.Close()
+	defer originFile.Close()
+	uploadData := []byte{}
+	originData := []byte{}
+	uploadFile.Read(uploadData)
+	originFile.Read(originData)
+
+	assert.Equal(t, originData, uploadData)
+
 }
