@@ -152,8 +152,9 @@ func TestUsers(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	data, _ := ioutil.ReadAll(rec.Body)
-	assert.Contains(t, string(data), "Get UserInfo")
+	assert.Contains(t, string(data), "[]")
 }
+
 func TestGetUsers(t *testing.T) {
 
 	e := echo.New()
@@ -166,12 +167,12 @@ func TestGetUsers(t *testing.T) {
 	c.SetParamNames("userId")
 	c.SetParamValues("89")
 
-	err := usersHandler(c)
+	err := getUserInfoHandler(c)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	data, _ := ioutil.ReadAll(rec.Body)
-	assert.Contains(t, string(data), "/users/89")
+	assert.Contains(t, string(data), "No User Id")
 }
 
 func TestCreateUsers(t *testing.T) {
@@ -191,4 +192,62 @@ func TestCreateUsers(t *testing.T) {
 	findUser := User{}
 	json.NewDecoder(resp.Body).Decode(findUser)
 	assert.Equal(t, savedUser.Id, findUser.Id)
+}
+
+func TestDeleteUsers(t *testing.T) {
+	ts := httptest.NewServer(NewHttpHandler())
+	defer ts.Close()
+
+	request, _ := http.NewRequest(http.MethodDelete, ts.URL+"/users/1", nil)
+	resp, err := http.DefaultClient.Do(request)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	data, _ := ioutil.ReadAll(resp.Body)
+
+	assert.Contains(t, string(data), "No User Id: 1")
+}
+
+func TestDeleteUsers2(t *testing.T) {
+	ts := httptest.NewServer(NewHttpHandler())
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/users", "application/json",
+		strings.NewReader(`{"first_name": "hyecheon", "last_name": "hclee", "email":"rainbow0616@naver.com"}`))
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	savedUser := User{}
+	json.NewDecoder(resp.Body).Decode(&savedUser)
+
+	request, _ := http.NewRequest(http.MethodDelete, fmt.Sprint(ts.URL+"/users/", savedUser.Id), nil)
+	resp, err = http.DefaultClient.Do(request)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	data, _ := ioutil.ReadAll(resp.Body)
+
+	assert.Contains(t, string(data), fmt.Sprint("Delete User Id: ", savedUser.Id))
+}
+
+func TestUpdateUsers(t *testing.T) {
+	ts := httptest.NewServer(NewHttpHandler())
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/users", "application/json",
+		strings.NewReader(`{"first_name": "hyecheon", "last_name": "hclee", "email":"rainbow0616@naver.com"}`))
+	savedUser := User{}
+	json.NewDecoder(resp.Body).Decode(&savedUser)
+
+	request, _ := http.NewRequest(http.MethodPut, fmt.Sprint(ts.URL+"/users/", savedUser.Id),
+		strings.NewReader(`{"first_name": "updated", "last_name": "updated", "email":"updated@naver.com"}`))
+	request.Header.Set("content-type", "application/json")
+	resp, err = http.DefaultClient.Do(request)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	updatedUser := User{}
+	json.NewDecoder(resp.Body).Decode(&updatedUser)
+
+	assert.Equal(t, updatedUser.FirstName, "updated")
+	assert.Equal(t, updatedUser.LastName, "updated")
+	assert.Equal(t, updatedUser.Email, "updated@naver.com")
 }

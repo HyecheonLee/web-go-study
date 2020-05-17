@@ -33,6 +33,8 @@ func NewHttpHandler() *echo.Echo {
 	e.GET("/users", usersHandler)
 	e.POST("/users", createUsersHandler)
 	e.GET("/users/:userId", getUserInfoHandler)
+	e.DELETE("/users/:userId", deleteUserHandler)
+	e.PUT("/users/:userId", updateUserHandler)
 
 	return e
 }
@@ -49,6 +51,66 @@ func createUsersHandler(context echo.Context) error {
 	userDb[user.Id] = user
 
 	return context.JSON(http.StatusCreated, user)
+}
+func usersHandler(ctx echo.Context) error {
+	var users []*User
+	for _, user := range userDb {
+		users = append(users, user)
+	}
+	if len(users) == 0 {
+		return ctx.JSON(http.StatusOK, []*User{})
+	}
+	return ctx.JSON(http.StatusOK, users)
+}
+func getUserInfoHandler(ctx echo.Context) error {
+	userId := ctx.Param("userId")
+	id, err := strconv.Atoi(userId)
+	if err != nil {
+		return ctx.JSON(http.StatusBadRequest, err)
+	}
+	user, ok := userDb[id]
+	if ok {
+		return ctx.JSON(http.StatusOK, user)
+	} else {
+		return ctx.JSON(http.StatusOK, "No User Id")
+	}
+}
+func deleteUserHandler(ctx echo.Context) error {
+	userId, err := strconv.Atoi(ctx.Param("userId"))
+	if err != nil {
+		return ctx.JSON(http.StatusBadRequest, err)
+	}
+	_, ok := userDb[userId]
+	if !ok {
+		return findNotUserId(ctx, userId)
+	}
+	delete(userDb, userId)
+	return ctx.JSON(http.StatusOK, fmt.Sprint("Delete User Id: ", userId))
+}
+func updateUserHandler(ctx echo.Context) error {
+	userId, err := strconv.Atoi(ctx.Param("userId"))
+	if err != nil {
+		return ctx.JSON(http.StatusBadRequest, err)
+	}
+	savedUser, ok := userDb[userId]
+	if !ok {
+		return findNotUserId(ctx, userId)
+	}
+
+	updateUser := new(User)
+	if err = ctx.Bind(updateUser); err != nil {
+		return ctx.JSON(http.StatusBadRequest, err)
+	}
+	if updateUser.FirstName != "" {
+		savedUser.FirstName = updateUser.FirstName
+	}
+	if updateUser.LastName != "" {
+		savedUser.LastName = updateUser.LastName
+	}
+	if updateUser.Email != "" {
+		savedUser.Email = updateUser.Email
+	}
+	return ctx.JSON(http.StatusOK, savedUser)
 }
 func uploadsHandler(ctx echo.Context) error {
 	header, err := ctx.FormFile("upload_file")
@@ -74,28 +136,9 @@ func uploadsHandler(ctx echo.Context) error {
 	}
 	return ctx.String(http.StatusOK, filepath)
 }
-
 func indexHandler(ctx echo.Context) error {
 	return ctx.String(http.StatusOK, "Hello world")
 }
-func usersHandler(ctx echo.Context) error {
-	userId := ctx.Param("userId")
-	return ctx.String(http.StatusOK, fmt.Sprintf("Get UserInfo by /users/%s", userId))
-}
-func getUserInfoHandler(ctx echo.Context) error {
-	userId := ctx.Param("userId")
-	id, err := strconv.Atoi(userId)
-	if err != nil {
-		return ctx.JSON(http.StatusBadRequest, err)
-	}
-	user, ok := userDb[id]
-	if ok {
-		return ctx.JSON(http.StatusOK, user)
-	} else {
-		return ctx.JSON(http.StatusOK, "No User Id")
-	}
-}
-
 func fooHandler(ctx echo.Context) error {
 	user := new(User)
 	err := json.NewDecoder(ctx.Request().Body).Decode(user)
@@ -111,4 +154,8 @@ func barHandler(ctx echo.Context) error {
 		name = "World"
 	}
 	return ctx.String(http.StatusOK, fmt.Sprintf("Hello %s", name))
+}
+
+func findNotUserId(ctx echo.Context, userId int) error {
+	return ctx.JSON(http.StatusOK, fmt.Sprint("No User Id: ", userId))
 }
